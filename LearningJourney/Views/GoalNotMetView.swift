@@ -1,7 +1,11 @@
 import SwiftUI
+import SwiftData
 
 struct GoalNotMetView: View {
-    @State private var showNewGoal = false
+    @Environment(\.modelContext) private var modelContext
+
+    @Query(sort: \LearningGoal.startDate, order: .reverse)
+    private var savedGoals: [LearningGoal]
     var body: some View {
         ZStack {
             Color.black
@@ -26,8 +30,10 @@ struct GoalNotMetView: View {
                 Spacer()
 
                 Button {
-                    showNewGoal = true
-                } label: {
+                    if let goal = savedGoals.first(where: { !$0.isCompleted }) {
+                        goal.isCompleted = true
+                        try? modelContext.save()
+                    }                } label: {
                     Text("Set New Goal")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
@@ -41,12 +47,27 @@ struct GoalNotMetView: View {
             }
             .padding(24)
         }
-        .fullScreenCover(isPresented: $showNewGoal) {
-            OnboardingView()
-        }
     }
 }
 
-#Preview {
-    GoalNotMetView()
+#Preview("Goal Not Met - Test") {
+    let container = try! ModelContainer(
+        for: LearningGoal.self, LearningDay.self,
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+    )
+
+    let testGoal = LearningGoal(
+        title: "Test Goal",
+        duration: .week,
+        startDate: Calendar.current.date(
+            byAdding: .day,
+            value: -8,
+            to: Date()
+        )!
+    )
+
+    container.mainContext.insert(testGoal)
+
+    return ContentView()
+        .modelContainer(container)
 }

@@ -9,16 +9,19 @@ struct CalendarView: View {
 
     @Query private var savedDays: [LearningDay]
 
-    private let calendar = Calendar.current
+    private var calendar: Calendar {
+        var calendar = Calendar.current
+        calendar.firstWeekday = 1
+        return calendar
+    }
     private func dayType(for date: Date) -> LearningDayType? {
-        guard let goal = savedGoals.first(where: { !$0.isCompleted }) else {
-            return nil
-        }
-
-        return savedDays.first { day in
-            day.goal?.persistentModelID == goal.persistentModelID &&
-            calendar.isDate(day.date, inSameDayAs: date)
-        }?.type
+        return savedDays
+            .filter { day in
+                calendar.isDate(day.date, inSameDayAs: date)
+            }
+            .sorted { $0.date > $1.date }
+            .first?
+            .type
     }
     private func dayColor(for date: Date) -> Color {
         switch dayType(for: date) {
@@ -32,31 +35,15 @@ struct CalendarView: View {
     }
 
     private var months: [Date] {
-        guard let goal = savedGoals.first(where: { !$0.isCompleted }),
-              let startMonth = calendar.dateInterval(
-                of: .month,
-                for: goal.startDate
-              )?.start,
-              let currentMonth = calendar.dateInterval(
-                of: .month,
-                for: Date.now
-              )?.start else {
-            return []
-        }
+        let year = calendar.component(.year, from: Date.now)
 
-        let monthCount = calendar.dateComponents(
-            [.month],
-            from: startMonth,
-            to: currentMonth
-        ).month ?? 0
-
-        guard monthCount >= 0 else { return [] }
-
-        return (0...monthCount).compactMap { offset in
+        return (1...12).compactMap { month in
             calendar.date(
-                byAdding: .month,
-                value: offset,
-                to: startMonth
+                from: DateComponents(
+                    year: year,
+                    month: month,
+                    day: 1
+                )
             )
         }
     }
@@ -123,8 +110,7 @@ struct CalendarView: View {
                         let type = dayType(for: date)
 
                         Text(date, format: .dateTime.day())
-                            .font(.system(size: 16))
-                            .foregroundStyle(
+                            .font(.system(size: 16))                            .foregroundStyle(
                                 type == nil ? Color.white :
                                 dayColor(for: date)
                             )
@@ -196,6 +182,38 @@ struct CalendarView: View {
     }
 }
 
-#Preview {
-    CalendarView()
+#Preview("Calendar - Test") {
+    let container = try! ModelContainer(
+        for: LearningGoal.self, LearningDay.self,
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+    )
+
+    let calendar = Calendar.current
+
+    let goal = LearningGoal(
+        title: "Learn SwiftUI",
+        duration: .month,
+        startDate: .now
+    )
+
+    container.mainContext.insert(goal)
+
+    for offset in 0..<5 {
+        let date = calendar.date(
+            byAdding: .day,
+            value: -offset,
+            to: .now
+        )!
+
+        let day = LearningDay(
+            date: date,
+            type: offset < 3 ? .learned : .frozen,
+            goal: goal
+        )
+
+        container.mainContext.insert(day)
+    }
+
+    return CalendarView()
+        .modelContainer(container)
 }

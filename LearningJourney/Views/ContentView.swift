@@ -19,22 +19,24 @@ struct ContentView: View {
 
 
     var body: some View {
-        if let activeGoal = savedGoals.first(where: { !$0.isCompleted }) {
-
-            if viewModel.hasGoalEnded(activeGoal) {
-                if viewModel.isGoalSuccessful(activeGoal, days: savedDays) {
-                    GoalCompletedView()
+        Group {
+            if let activeGoal = savedGoals.first(where: { !$0.isCompleted }) {
+                
+                if viewModel.hasGoalEnded(activeGoal) {
+                    if viewModel.isGoalSuccessful(activeGoal, days: savedDays) {
+                        GoalCompletedView()
+                    } else {
+                        GoalNotMetView()
+                    }
                 } else {
-                    GoalNotMetView()
+                    ActivityView()
                 }
+                
             } else {
-                ActivityView()
-            }
-
-        } else {
-            OnboardingView()
-        }
-    }}
+                OnboardingView()
+            }}
+    }
+}
 
 #Preview {
     ContentView()

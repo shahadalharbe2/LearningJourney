@@ -338,10 +338,27 @@ struct LearningJourneyTests {
         let goal = LearningGoal(
             title: "Learn SwiftUI",
             duration: .week,
-            startDate: .now
+            startDate: Calendar.current.date(
+                byAdding: .day,
+                value: -2,
+                to: .now
+            )!
         )
 
         context.insert(goal)
+        let yesterday = Calendar.current.date(
+            byAdding: .day,
+            value: -1,
+            to: .now
+        )!
+
+        let previousLearningDay = LearningDay(
+            date: yesterday,
+            type: .learned,
+            goal: goal
+        )
+
+        context.insert(previousLearningDay)
 
         viewModel.logDay(
             type: .frozen,
@@ -359,8 +376,13 @@ struct LearningJourneyTests {
             FetchDescriptor<LearningDay>()
         )
 
-        #expect(savedDays.count == 1)
-        #expect(savedDays.first?.type == .frozen)
+        #expect(savedDays.count == 2)
+
+        let today = savedDays.first {
+            Calendar.current.isDateInToday($0.date)
+        }
+
+        #expect(today?.type == .frozen)
     }
     
     @Test
@@ -378,7 +400,11 @@ struct LearningJourneyTests {
         let goal = LearningGoal(
             title: "Learn SwiftUI",
             duration: .week,
-            startDate: .now
+            startDate: calendar.date(
+                byAdding: .day,
+                value: -3,
+                to: .now
+            )!
         )
 
         context.insert(goal)
@@ -422,6 +448,53 @@ struct LearningJourneyTests {
         }
 
         #expect(todayIsFrozen == false)
+    }
+    @Test
+    @MainActor
+    func newGoalCanLogOnSameDayAsPreviousGoal() throws {
+        let container = try ModelContainer(
+            for: LearningGoal.self, LearningDay.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+
+        let context = container.mainContext
+        let viewModel = LearningGoalViewModel()
+
+        let oldGoal = LearningGoal(
+            title: "Old Goal",
+            duration: .week,
+            startDate: .now.addingTimeInterval(-3600)
+        )
+
+        oldGoal.isCompleted = true
+        context.insert(oldGoal)
+
+        viewModel.logDay(
+            type: .learned,
+            goal: oldGoal,
+            context: context
+        )
+
+        let newGoal = LearningGoal(
+            title: "New Goal",
+            duration: .week,
+            startDate: .now
+        )
+
+        context.insert(newGoal)
+
+        viewModel.logDay(
+            type: .learned,
+            goal: newGoal,
+            context: context
+        )
+
+        let days = try context.fetch(FetchDescriptor<LearningDay>())
+
+        #expect(days.count == 2)
+        #expect(days.filter {
+            $0.goal?.persistentModelID == newGoal.persistentModelID
+        }.count == 1)
     }
 
 }

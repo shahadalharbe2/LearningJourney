@@ -22,18 +22,7 @@ struct EditGoalView: View {
 
         guard !newTitle.isEmpty else { return }
 
-        let descriptor = FetchDescriptor<LearningDay>()
-
         do {
-            let allDays = try modelContext.fetch(descriptor)
-
-            let goalDays = allDays.filter { day in
-                day.goal?.persistentModelID == goal.persistentModelID
-            }
-
-            // TODO: Confirm with mentor whether previous
-            // learning history should be deleted or preserved.
-
             goal.title = newTitle
             goal.duration = selectedDuration
             goal.startDate = Date()
@@ -52,72 +41,152 @@ struct EditGoalView: View {
                 .ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 24) {
-                Text("Edit Goal")
-                    .font(.largeTitle.bold())
 
-                Text("Learning Goal")
-                    .font(.headline)
+                HStack {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 20))
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .background(Color.white.opacity(0.10))
+                            .clipShape(Circle())
+                    }
 
-                TextField("Enter your goal", text: $goalTitle)
-                    .padding()
-                    .background(Color.white.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                
-                Text("Duration")
-                    .font(.headline)
+                    Spacer()
 
-                HStack(spacing: 12) {
-                    ForEach(
-                        [LearningDuration.week, .month, .year],
-                        id: \.self
-                    ) { duration in
-                        Button {
-                            selectedDuration = duration
-                        } label: {
-                            Text(duration.rawValue.capitalized)
-                                .font(.subheadline.weight(.medium))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(
-                                    selectedDuration == duration
+                    Text("Learning Goal")
+                        .font(.headline)
+
+                    Spacer()
+
+                    Button {
+                        showResetConfirmation = true
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .background(Color.orange)
+                            .clipShape(Circle())
+                    }
+                    .disabled(
+                        goalTitle.trimmingCharacters(
+                            in: .whitespacesAndNewlines
+                        ).isEmpty
+                    )
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("I want to learn")
+                        .font(.system(size: 16))
+
+                    TextField("Swift", text: $goalTitle)
+                        .font(.system(size: 16))
+                        .padding(.vertical, 12)
+
+                    Divider()
+                        .background(Color.gray.opacity(0.4))
+                }
+                .padding(.top, 24)
+
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("I want to learn it in a")
+                        .font(.system(size: 16))
+
+                    HStack(spacing: 12) {
+                        ForEach(
+                            [LearningDuration.week, .month, .year],
+                            id: \.self
+                        ) { duration in
+                            Button {
+                                selectedDuration = duration
+                            } label: {
+                                Text(duration.rawValue.capitalized)
+                                    .font(.system(size: 16))
+                                    .padding(.horizontal, 22)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        selectedDuration == duration
                                         ? Color.orange
-                                        : Color.white.opacity(0.12)
-                                )
-                                .clipShape(
-                                    RoundedRectangle(cornerRadius: 12)
-                                )
+                                        : Color.white.opacity(0.10)
+                                    )
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
 
-
                 Spacer()
-                Button {
-                    showResetConfirmation = true
-                } label: {
-                    Text("Save Changes")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.orange)
-                        .foregroundStyle(.black)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                }
-                .disabled(goalTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .padding()
+            .padding(16)
             .foregroundStyle(.white)
-        }
-        .alert("Reset Learning Streak?", isPresented: $showResetConfirmation) {
-            Button("Cancel", role: .cancel) {}
+            if showResetConfirmation {
+                Color.black.opacity(0.55)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        showResetConfirmation = false
+                    }
 
-            Button("Confirm Reset", role: .destructive) {
-                saveChanges()
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Update goal")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+
+                    Text("If you update now, your streak will start over.")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.gray)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 8) {
+                        Button("Dismiss") {
+                            showResetConfirmation = false
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                        .background(Color(red: 0.20, green: 0.20, blue: 0.22))
+                        .clipShape(Capsule())
+
+                        Button("Update") {
+                            showResetConfirmation = false
+                            saveChanges()
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                        .background(Color.orange)
+                        .clipShape(Capsule())
+                    }
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.white)
+                }
+                .padding(14)
+                .frame(width: 300)
+                .background(Color(red: 0.10, green: 0.10, blue: 0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 32))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 32)
+                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                }
             }
-        } message: {
-            Text("Changing your learning goal will reset your current streak. Do you want to continue?")
         }
     }
 }
+#Preview("Edit Goal - Test") {
+    let container = try! ModelContainer(
+        for: LearningGoal.self, LearningDay.self,
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+    )
 
+    let goal = LearningGoal(
+        title: "Learn SwiftUI",
+        duration: .month,
+        startDate: .now
+    )
+
+    container.mainContext.insert(goal)
+
+    return EditGoalView(goal: goal)
+        .modelContainer(container)
+}

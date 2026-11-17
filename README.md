@@ -11,6 +11,16 @@ By combining personalized learning goals, daily streaks, and flexible freeze day
 
 ---
 
+## 📱 App Preview
+
+<p align="center">
+  <img src="LearningJourney-Preview.PNG" alt="LearningJourney App Screens" width="100%">
+</p>
+
+Explore the LearningJourney experience, from setting a learning goal to tracking daily progress, using Freeze days, editing goals, and reviewing learning history.
+
+---
+
 ## ✨ Key Features
 
 ### 🎯 Personalized Learning Goals

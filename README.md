@@ -1,4 +1,8 @@
 # 📚 LearningJourney
+<p align="center">
+  <img src="AppIcon.png" alt="LearningJourney App Icon" width="180">
+</p>
+
 ### Small Steps. Lasting Progress.
 
 **LearningJourney** is an iOS application designed to help users build consistent learning habits, track their daily progress, and stay motivated throughout their learning journey.

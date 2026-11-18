@@ -12,15 +12,21 @@ struct OnboardingView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     private let viewModel = LearningGoalViewModel()
-    @Query private var savedGoals: [LearningGoal]
     @State private var goalTitle = ""
     @State private var selectedDuration: LearningDuration = .week
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
-                Text("Hello Learner!")
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+
+                Text("Hello Learner")
                     .font(.largeTitle)
                     .bold()
+                Text("This app will help you learn everyday!")
+                    .foregroundStyle(.secondary)
                 
                 TextField("Enter your learning goal", text: $goalTitle)
                     .textFieldStyle(.roundedBorder)
@@ -42,15 +48,22 @@ struct OnboardingView: View {
                     print("Learning goal saved!")
                     dismiss()
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+                .buttonBorderShape(.capsule)
                 .disabled(goalTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .padding()
                 
-                Text("Saved goals: \(savedGoals.count)")
+                Text("You can edit your desire later")
                     .font(.caption)
+                    .foregroundStyle(.secondary)
                 
             }
             .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.black.ignoresSafeArea())
         }
+        .preferredColorScheme(.dark)
     }
 }
     

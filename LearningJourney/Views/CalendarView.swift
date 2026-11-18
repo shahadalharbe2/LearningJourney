@@ -37,14 +37,12 @@ struct CalendarView: View {
     private var months: [Date] {
         let year = calendar.component(.year, from: Date.now)
 
-        return (1...12).compactMap { month in
-            calendar.date(
-                from: DateComponents(
-                    year: year,
-                    month: month,
-                    day: 1
-                )
-            )
+        let firstActivityYear = savedDays.map { calendar.component(.year, from: $0.date) }.min() ?? year
+
+        return (min(firstActivityYear, year)...year).flatMap { activityYear in
+            (1...12).compactMap { month in
+                calendar.date(from: DateComponents(year: activityYear, month: month, day: 1))
+            }
         }
     }
     private func daysInMonth(_ month: Date) -> [Date?] {

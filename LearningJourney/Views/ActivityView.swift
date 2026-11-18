@@ -16,22 +16,17 @@ struct ActivityView: View {
     @Query(sort: \LearningGoal.startDate, order: .reverse)
     private var savedGoals: [LearningGoal]
     @Query private var savedDays: [LearningDay]
-    private func isTodayLogged(for goal: LearningGoal) -> Bool {
+    private func isTodayLogged(for goal: LearningGoal, on date: Date) -> Bool {
         savedDays.contains { day in
             day.goal?.persistentModelID == goal.persistentModelID &&
             day.date >= goal.startDate &&
-            Calendar.current.isDateInToday(day.date)
+            Calendar.current.isDate(day.date, inSameDayAs: date)
         }
     }
 
     private func daysForGoal(_ goal: LearningGoal) -> [LearningDay] {
         savedDays.filter { day in
             day.goal?.persistentModelID == goal.persistentModelID &&
-            day.date >= goal.startDate
-        }
-    }
-    private func streakDaysForGoal(_ goal: LearningGoal) -> [LearningDay] {
-        daysForGoal(goal).filter { day in
             day.date >= goal.startDate
         }
     }
@@ -51,9 +46,8 @@ struct ActivityView: View {
         }
     }
     // أضيفي الكود الجديد هنا
-    private var weekDates: [Date] {
+    private func weekDates(for today: Date) -> [Date] {
         let calendar = Calendar.current
-        let today = Date.now
 
         guard let week = calendar.dateInterval(
             of: .weekOfYear,
@@ -90,6 +84,8 @@ struct ActivityView: View {
             )
         }
     }
+    let now: Date
+
     var body: some View {
         ZStack {
             Color.black
@@ -126,7 +122,7 @@ struct ActivityView: View {
                 }
 
                 Text(
-                    Date.now,
+                    now,
                     format: .dateTime
                         .weekday(.wide)
                         .day()
@@ -142,7 +138,7 @@ struct ActivityView: View {
                     ),
                     spacing: 8
                 ) {
-                ForEach(weekDates, id: \.self) { date in
+                ForEach(weekDates(for: now), id: \.self) { date in
 
                         let goal = savedGoals.first(where: { !$0.isCompleted })
 
@@ -154,7 +150,7 @@ struct ActivityView: View {
                             isFrozenDay(date, goal: $0)
                         } ?? false
 
-                        let isToday = Calendar.current.isDateInToday(date)
+                        let isToday = Calendar.current.isDate(date, inSameDayAs: now)
 
                         VStack(spacing: 6) {
 
@@ -185,10 +181,11 @@ struct ActivityView: View {
                 // نهاية كود أيام الأسبوع
 
                                 if let goal = savedGoals.first(where: { !$0.isCompleted })  {
-                                    if viewModel.hasGoalEnded(goal) {
+                                    if viewModel.hasGoalEnded(goal, currentDate: now) {
                                         let succeeded = viewModel.isGoalSuccessful(
                                             goal,
-                                            days: savedDays
+                                            days: savedDays,
+                                            currentDate: now
                                         )
 
                                         VStack(spacing: 20) {
@@ -210,13 +207,13 @@ struct ActivityView: View {
                                         .padding(.top, 80)
 
                                     } else {
-                                        let learnedCount = viewModel.learnedDaysCount(
-                                            for: goal,
-                                            days: daysForGoal(goal)
-                                        )
+                                        let goalDays = daysForGoal(goal)
+                                        let streak = viewModel.calculateStreak(days: goalDays, currentDate: now)
+                                        let todayLogged = isTodayLogged(for: goal, on: now)
+                                        let canFreeze = !todayLogged && viewModel.canFreeze(days: goalDays, duration: goal.duration, currentDate: now)
                                         
                                         let freezesUsed = viewModel.usedFreezes(
-                                            days: streakDaysForGoal(goal)
+                                            days: goalDays
                                         )
                                         
                                         let maxFreezes = viewModel.freezeLimit(
@@ -230,7 +227,8 @@ struct ActivityView: View {
                                                     .font(.system(size: 30))
                                                     .foregroundStyle(.orange)
                                                 
-                                                Text("\(learnedCount)")                                                    .font(.title)
+                                                Text(streak == 1 ? "1 day" : "\(streak) days")
+                                                    .font(.title)
                                                     .bold()
                                                 
                                                 Text("Learned")
@@ -250,7 +248,7 @@ struct ActivityView: View {
                                                     .font(.system(size: 30))
                                                     .foregroundStyle(.cyan)
                                                 
-                                                Text("\(freezesUsed)")
+                                                Text(freezesUsed == 1 ? "1 day" : "\(freezesUsed) days")
                                                     .font(.title)
                                                     .bold()
                                                 
@@ -273,10 +271,10 @@ struct ActivityView: View {
                                                 context: modelContext
                                             )
                                         } label: {
-                                            Text(isTodayLogged(for: goal) ? "Logged as Learned" : "Log as Learned")
+                                            Text(isLearnedDay(now, goal: goal) ? "Logged as Learned" : "Log as Learned")
                                                 .font(.headline)
                                                 .foregroundStyle(
-                                                    isTodayLogged(for: goal)
+                                                    todayLogged
                                                     ? Color.gray
                                                     : Color.white
                                                 )
@@ -284,13 +282,13 @@ struct ActivityView: View {
                                                 .background(
                                                     Circle()
                                                         .fill(
-                                                            isTodayLogged(for: goal)
+                                                            todayLogged
                                                             ? Color(white: 0.11)
                                                             : Color(red: 1.0, green: 0.55, blue: 0.15)
                                                         )
                                                 )
                                         }
-                                        .disabled(isTodayLogged(for: goal))
+                                        .disabled(todayLogged)
                                         Button {
                                             viewModel.logDay(
                                                 type: .frozen,
@@ -299,19 +297,19 @@ struct ActivityView: View {
                                             )
                                         } label: {
                                             Text(
-                                                isFrozenDay(Date.now, goal: goal)
+                                                isFrozenDay(now, goal: goal)
                                                 ? "Freezed for a day"
                                                 : "Freeze for a day"
                                             )
                                             .font(.subheadline)
                                             .foregroundStyle(
-                                                isTodayLogged(for: goal) || freezesUsed >= maxFreezes
+                                                !canFreeze
                                                 ? Color.gray
                                                 : Color.white
                                             )
                                             .frame(width: 240, height: 44)
                                             .background(
-                                                isTodayLogged(for: goal) || freezesUsed >= maxFreezes
+                                                !canFreeze
                                                 ? Color(white: 0.11)
                                                 : Color.cyan
                                             )
@@ -321,14 +319,11 @@ struct ActivityView: View {
                                                     .stroke(Color.white.opacity(0.12), lineWidth: 1)
                                             }
                                         }
-                                        .disabled(
-                                            isTodayLogged(for: goal) ||
-                                            freezesUsed >= maxFreezes
-                                        )
+                                        .disabled(!canFreeze)
                                         Text("\(freezesUsed) out of \(maxFreezes) Freezes used")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
-                                        if isTodayLogged(for: goal) {
+                                        if todayLogged {
                                             Text("You've already logged today! ✓")
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
@@ -393,6 +388,6 @@ struct ActivityView: View {
         container.mainContext.insert(day)
     }
 
-    return ActivityView()
+    return ActivityView(now: .now)
         .modelContainer(container)
 }

@@ -53,23 +53,7 @@ final class LearningGoalViewModel {
                 day.date >= goal.startDate
             }
 
-            guard let lastDay = goalDays.max(by: { $0.date < $1.date }) else {
-                print("Freeze requires a previous learning day!")
-                return
-            }
-
-            let hoursSinceLastLog = Date.now.timeIntervalSince(lastDay.date) / 3600
-
-            guard hoursSinceLastLog <= 32 else {
-                print("Streak expired! Freeze cannot restore it.")
-                return
-            }
-            
-            let freezesUsed = usedFreezes(days: goalDays)
-            let maxFreezes = freezeLimit(for: goal.duration)
-            
-            guard freezesUsed < maxFreezes else {
-                print("Freeze limit reached!")
+            guard canFreeze(days: goalDays, duration: goal.duration, currentDate: .now) else {
                 return
             }
         }
@@ -81,6 +65,12 @@ final class LearningGoalViewModel {
         
         context.insert(newDay)
     }
+    func canFreeze(days: [LearningDay], duration: LearningDuration, currentDate: Date) -> Bool {
+        guard let latestDate = days.map(\.date).max() else { return false }
+        return currentDate.timeIntervalSince(latestDate) <= 32 * 3600
+            && usedFreezes(days: days) < freezeLimit(for: duration)
+    }
+
     func calculateStreak(
         days: [LearningDay],
         currentDate: Date = Date()
@@ -153,12 +143,12 @@ final class LearningGoalViewModel {
             )
         }
     }
-    func hasGoalEnded(_ goal: LearningGoal) -> Bool {
+    func hasGoalEnded(_ goal: LearningGoal, currentDate: Date = .now) -> Bool {
         guard let endDate = goalEndDate(for: goal) else {
             return false
         }
         
-        return Date.now >= endDate
+        return currentDate >= endDate
     }
     func learnedDaysCount(
         for goal: LearningGoal,

@@ -19,17 +19,18 @@ struct ContentView: View {
 
 
     var body: some View {
-        Group {
+        TimelineView(.everyMinute) { _ in
+            let now = Date.now
             if let activeGoal = savedGoals.first(where: { !$0.isCompleted }) {
                 
-                if viewModel.hasGoalEnded(activeGoal) {
-                    if viewModel.isGoalSuccessful(activeGoal, days: savedDays) {
+                if viewModel.hasGoalEnded(activeGoal, currentDate: now) {
+                    if viewModel.isGoalSuccessful(activeGoal, days: savedDays, currentDate: now) {
                         GoalCompletedView()
                     } else {
                         GoalNotMetView()
                     }
                 } else {
-                    ActivityView()
+                    ActivityView(now: now)
                 }
                 
             } else {

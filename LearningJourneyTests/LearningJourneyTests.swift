@@ -497,4 +497,144 @@ struct LearningJourneyTests {
         }.count == 1)
     }
 
+    @Test(arguments: [LearningDayType.learned, .frozen])
+    @MainActor
+    func sameButtonUndoesAndOtherButtonCanThenLog(first: LearningDayType) throws {
+        let container = try ModelContainer(
+            for: LearningGoal.self, LearningDay.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let context = container.mainContext
+        let viewModel = LearningGoalViewModel()
+        let now = Date()
+        let other: LearningDayType = first == .learned ? .frozen : .learned
+        let goal = LearningGoal(title: "Test", duration: .week, startDate: now)
+        context.insert(goal)
+
+        viewModel.logDay(type: first, goal: goal, context: context, currentDate: now)
+        viewModel.logDay(type: other, goal: goal, context: context, currentDate: now)
+        var days = try context.fetch(FetchDescriptor<LearningDay>())
+        #expect(days.count == 1)
+        #expect(viewModel.activityType(on: now, days: days) == first)
+        #expect(viewModel.usedFreezes(days: days) == (first == .frozen ? 1 : 0))
+        #expect(viewModel.calculateStreak(days: days, currentDate: now) == (first == .learned ? 1 : 0))
+
+        viewModel.logDay(type: first, goal: goal, context: context, currentDate: now)
+        days = try context.fetch(FetchDescriptor<LearningDay>())
+        #expect(days.isEmpty)
+        #expect(viewModel.activityType(on: now, days: days) == nil)
+        #expect(viewModel.calculateStreak(days: days, currentDate: now) == 0)
+        #expect(viewModel.usedFreezes(days: days) == 0)
+
+        viewModel.logDay(type: other, goal: goal, context: context, currentDate: now)
+        days = try ModelContext(container).fetch(FetchDescriptor<LearningDay>())
+        #expect(days.count == 1)
+        #expect(viewModel.activityType(on: now, days: days) == other)
+    }
+
+    @Test
+    @MainActor
+    func undoAtFreezeLimitKeepsYesterdayAndRestoresAllowance() throws {
+        let container = try ModelContainer(
+            for: LearningGoal.self, LearningDay.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let context = container.mainContext
+        let viewModel = LearningGoalViewModel()
+        let now = Date()
+        let yesterday = try #require(Calendar.current.date(byAdding: .day, value: -1, to: now))
+        let goal = LearningGoal(title: "Test", duration: .week, startDate: yesterday)
+        context.insert(goal)
+        context.insert(LearningDay(date: yesterday, type: .frozen, goal: goal))
+
+        viewModel.logDay(type: .frozen, goal: goal, context: context, currentDate: now)
+        var days = try context.fetch(FetchDescriptor<LearningDay>())
+        #expect(viewModel.usedFreezes(days: days) == 2)
+
+        viewModel.logDay(type: .frozen, goal: goal, context: context, currentDate: now)
+        days = try context.fetch(FetchDescriptor<LearningDay>())
+        #expect(days.count == 1)
+        #expect(days.first?.date == yesterday)
+        #expect(viewModel.activityType(on: now, days: days) == nil)
+        #expect(viewModel.canLogDay(type: .frozen, today: nil, freezesUsed: days.count, duration: .week))
+    }
+
+    @Test
+    @MainActor
+    func buttonAvailabilityFollowsTodayAndFreezeAllowance() {
+        let viewModel = LearningGoalViewModel()
+        #expect(viewModel.canLogDay(type: .learned, today: nil, freezesUsed: 0, duration: .week))
+        #expect(viewModel.canLogDay(type: .frozen, today: nil, freezesUsed: 0, duration: .week))
+        #expect(viewModel.canLogDay(type: .learned, today: .learned, freezesUsed: 0, duration: .week))
+        #expect(!viewModel.canLogDay(type: .frozen, today: .learned, freezesUsed: 0, duration: .week))
+        #expect(viewModel.canLogDay(type: .frozen, today: .frozen, freezesUsed: 2, duration: .week))
+        #expect(!viewModel.canLogDay(type: .learned, today: .frozen, freezesUsed: 2, duration: .week))
+        #expect(!viewModel.canLogDay(type: .frozen, today: nil, freezesUsed: 2, duration: .week))
+        #expect(viewModel.canLogDay(type: .learned, today: nil, freezesUsed: 2, duration: .week))
+    }
+}
+
+@MainActor
+struct QAEdgeTests {
+    @Test func goalCreationRejectsBlankAndRepeatedSubmission() throws {
+        let container = try ModelContainer(for: LearningGoal.self, LearningDay.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let context = container.mainContext
+        let vm = LearningGoalViewModel()
+        vm.saveGoal(title: "   ", duration: .week, context: context)
+        #expect(try context.fetchCount(FetchDescriptor<LearningGoal>()) == 0)
+        vm.saveGoal(title: " Swift ", duration: .month, context: context)
+        vm.saveGoal(title: " Swift ", duration: .month, context: context)
+        let goals = try ModelContext(container).fetch(FetchDescriptor<LearningGoal>())
+        #expect(goals.count == 1)
+        #expect(goals.first?.title == "Swift")
+        #expect(goals.first?.duration == .month)
+    }
+
+    @Test func savedGoalSurvivesReopeningStoreAndPreservesHistory() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let configuration = ModelConfiguration(url: directory.appendingPathComponent("QA.store"))
+        let vm = LearningGoalViewModel()
+        do {
+            let store = try ModelContainer(for: LearningGoal.self, LearningDay.self, configurations: configuration)
+            let context = store.mainContext
+            let oldGoal = LearningGoal(title: "Archived", duration: .week, startDate: .distantPast)
+            oldGoal.isCompleted = true
+            context.insert(oldGoal)
+            context.insert(LearningDay(date: .distantPast, type: .learned, goal: oldGoal))
+            try context.save()
+            #expect(vm.saveGoal(title: "Swift", duration: .year, context: context))
+        }
+        let reopened = try ModelContainer(for: LearningGoal.self, LearningDay.self, configurations: configuration)
+        let goals = try reopened.mainContext.fetch(FetchDescriptor<LearningGoal>())
+        let days = try reopened.mainContext.fetch(FetchDescriptor<LearningDay>())
+        #expect(goals.count == 2)
+        #expect(goals.first(where: { !$0.isCompleted })?.duration == .year)
+        #expect(days.count == 1)
+        #expect(days.first?.goal?.title == "Archived")
+    }
+
+    @Test(arguments: [LearningDuration.week, .month, .year])
+    func exactDeadlineAndFreezeLimit(duration: LearningDuration) throws {
+        let calendar = Calendar.current
+        let now = Date()
+        let vm = LearningGoalViewModel()
+        let goal = LearningGoal(title: "QA", duration: duration, startDate: now)
+        let end = try #require(vm.goalEndDate(for: goal))
+        let count = try #require(calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: end)).day)
+        let limit = vm.freezeLimit(for: duration)
+        let days = try (0..<count).map { offset in
+            LearningDay(date: try #require(calendar.date(byAdding: .day, value: offset, to: now)),
+                        type: offset < limit ? .frozen : .learned, goal: goal)
+        }
+        #expect(vm.isGoalSuccessful(goal, days: days, currentDate: end.addingTimeInterval(-1)) == false)
+        #expect(vm.isGoalSuccessful(goal, days: days, currentDate: end))
+        #expect(vm.isGoalSuccessful(goal, days: days, currentDate: end.addingTimeInterval(1)))
+        #expect(!vm.isGoalSuccessful(goal, days: Array(days.dropLast()), currentDate: end))
+        #expect(vm.canLogDay(type: .frozen, today: nil, freezesUsed: limit - 1, duration: duration))
+        #expect(!vm.canLogDay(type: .frozen, today: nil, freezesUsed: limit, duration: duration))
+        #expect(!vm.canLogDay(type: .frozen, today: nil, freezesUsed: limit + 1, duration: duration))
+    }
 }

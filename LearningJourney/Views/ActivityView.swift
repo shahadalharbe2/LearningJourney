@@ -10,350 +10,200 @@ import SwiftData
 
 struct ActivityView: View {
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: \LearningGoal.startDate, order: .reverse) private var savedGoals: [LearningGoal]
+    @Query private var savedDays: [LearningDay]
     @State private var showCalendar = false
     @State private var showEditGoal = false
+    @State private var weekOffset = 0
     private let viewModel = LearningGoalViewModel()
-    @Query(sort: \LearningGoal.startDate, order: .reverse)
-    private var savedGoals: [LearningGoal]
-    @Query private var savedDays: [LearningDay]
-    private func isTodayLogged(for goal: LearningGoal) -> Bool {
-        savedDays.contains { day in
-            day.goal?.persistentModelID == goal.persistentModelID &&
-            day.date >= goal.startDate &&
-            Calendar.current.isDateInToday(day.date)
-        }
-    }
+    private let orange = Color(red: 1, green: 146.0 / 255, blue: 48.0 / 255)
+    private let cyan = Color(red: 48.0 / 255, green: 204.0 / 255, blue: 239.0 / 255)
+    private let dimmed = Color(white: 0.35)
 
-    private func daysForGoal(_ goal: LearningGoal) -> [LearningDay] {
-        savedDays.filter { day in
-            day.goal?.persistentModelID == goal.persistentModelID &&
-            day.date >= goal.startDate
-        }
-    }
-    private func streakDaysForGoal(_ goal: LearningGoal) -> [LearningDay] {
-        daysForGoal(goal).filter { day in
-            day.date >= goal.startDate
-        }
-    }
-    private func isLearnedDay(_ date: Date, goal: LearningGoal) -> Bool {
-        daysForGoal(goal).contains { day in
-            Calendar.current.isDate(day.date, inSameDayAs: date)
-            && day.type == .learned
-            && day.date >= goal.startDate
-        }
-    }
+    private var goal: LearningGoal? { savedGoals.first { !$0.isCompleted } }
 
-    private func isFrozenDay(_ date: Date, goal: LearningGoal) -> Bool {
-        daysForGoal(goal).contains { day in
-            Calendar.current.isDate(day.date, inSameDayAs: date)
-            && day.type == .frozen
-            && day.date >= goal.startDate
-        }
-    }
-    // أضيفي الكود الجديد هنا
-    private var weekDates: [Date] {
-        let calendar = Calendar.current
-        let today = Date.now
-
-        guard let week = calendar.dateInterval(
-            of: .weekOfYear,
-            for: today
-        ) else {
-            return []
-        }
-
-        let activeGoal = savedGoals.first { !$0.isCompleted }
-
-        let earlierDates = activeGoal.map { goal in
-            daysForGoal(goal)
-                .map(\.date)
-                .filter { $0 < week.start }
-        } ?? []
-
-        let firstDate = earlierDates.min().map {
-            calendar.startOfDay(for: $0)
-        } ?? week.start
-
-        let numberOfDays = max(
-            7,
-            (calendar.dateComponents(
-                [.day],
-                from: firstDate,
-                to: week.start
-            ).day ?? 0) + 7
-        )
-        return (0..<numberOfDays).compactMap { offset in
-            calendar.date(
-                byAdding: .day,
-                value: offset,
-                to: firstDate
-            )
-        }
-    }
     var body: some View {
-        ZStack {
-            Color.black
-                .ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 16)  {
-                HStack(alignment: .center) {
-
-                    Text("Activity")
-                        .font(.system(size: 30, weight: .bold))
-
-                    Spacer()
-
-                    Button {
-                        showCalendar = true
-                    } label: {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 18))
-                            .foregroundStyle(.white)
-                            .frame(width: 40, height: 40)
-                            .background(Color.white.opacity(0.10))
-                            .clipShape(Circle())
-                    }
-
-                    Button {
-                        showEditGoal = true
-                    } label: {
-                        Image(systemName: "square.and.pencil")
-                            .font(.system(size: 18))
-                            .foregroundStyle(.white)
-                            .frame(width: 40, height: 40)
-                            .background(Color.white.opacity(0.10))
-                            .clipShape(Circle())
-                    }
-                }
-
-                Text(
-                    Date.now,
-                    format: .dateTime
-                        .weekday(.wide)
-                        .day()
-                        .month(.wide)
-                )
-                .font(.system(size: 14))
-                .foregroundStyle(.gray)
-                // بداية كود أيام الأسبوع
-                LazyVGrid(
-                    columns: Array(
-                        repeating: GridItem(.flexible(), spacing: 4),
-                        count: 7
-                    ),
-                    spacing: 8
-                ) {
-                ForEach(weekDates, id: \.self) { date in
-
-                        let goal = savedGoals.first(where: { !$0.isCompleted })
-
-                        let learned = goal.map {
-                            isLearnedDay(date, goal: $0)
-                        } ?? false
-
-                        let frozen = goal.map {
-                            isFrozenDay(date, goal: $0)
-                        } ?? false
-
-                        let isToday = Calendar.current.isDateInToday(date)
-
-                        VStack(spacing: 6) {
-
-                            Text(date, format: .dateTime.weekday(.narrow))
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.white)
-
-                            Text(date, format: .dateTime.day())
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundStyle(
-                                    isToday && !learned && !frozen
-                                    ? .black : .white
-                                )
-                                .frame(width: 40, height: 40)
-                                .background {
-                                    Circle()
-                                        .fill(
-                                            learned ? Color.orange :
-                                            frozen ? Color.cyan :
-                                            isToday ? Color.white :
-                                            Color.clear
-                                        )
-                                }
+        TimelineView(.everyMinute) { timeline in
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack {
+                            Text("Activity").font(.system(size: 34, weight: .bold))
+                            Spacer()
+                            headerButton("calendar", label: "Calendar") { showCalendar = true }
+                            headerButton("pencil.and.outline", label: "Edit learning goal") { showEditGoal = true }
                         }
-                        .frame(maxWidth: .infinity)
+
+                        if let goal {
+                            let days = viewModel.activityDays(for: goal, days: savedDays)
+                            let today = viewModel.activityType(on: timeline.date, days: days)
+                            dateHeader(timeline.date, showsNavigation: today == nil || weekOffset != 0)
+                            weekStrip(days: days, today: timeline.date)
+                                .padding(.top, 14)
+
+                            if viewModel.hasGoalEnded(goal) {
+                                goalResult(goal)
+                            } else {
+                                let freezes = viewModel.usedFreezes(days: days)
+                                HStack(spacing: 12) {
+                                    card("flame.fill", count: viewModel.calculateStreak(days: days),
+                                         title: "Learned", color: orange)
+                                    card("snowflake", count: freezes, title: "Freezed", color: cyan)
+                                }
+                                .padding(.top, 14)
+
+                                activityButtons(
+                                    goal: goal, today: today, freezes: freezes,
+                                    width: min(272, max(0, geometry.size.width - 32))
+                                )
+                                .padding(.top, 46)
+                            }
+                        } else {
+                            Text("No learning goal yet")
+                        }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 24)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                // نهاية كود أيام الأسبوع
-
-                                if let goal = savedGoals.first(where: { !$0.isCompleted })  {
-                                    if viewModel.hasGoalEnded(goal) {
-                                        let succeeded = viewModel.isGoalSuccessful(
-                                            goal,
-                                            days: savedDays
-                                        )
-
-                                        VStack(spacing: 20) {
-                                            Image(systemName: succeeded ? "hands.clap.fill" : "xmark.seal.fill")
-                                                .font(.system(size: 56))
-                                                .foregroundStyle(succeeded ? Color.yellow : Color.orange)
-
-                                            Text(succeeded
-                                                 ? "Well done!"
-                                                 : "You didn't reach your goal this time.")
-                                                .font(.headline)
-
-                                            Text(succeeded
-                                                 ? "Ready for your next goal?"
-                                                 : "Want to set another goal?")
-                                                .foregroundStyle(.gray)
-                                        }
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.top, 80)
-
-                                    } else {
-                                        let learnedCount = viewModel.learnedDaysCount(
-                                            for: goal,
-                                            days: daysForGoal(goal)
-                                        )
-                                        
-                                        let freezesUsed = viewModel.usedFreezes(
-                                            days: streakDaysForGoal(goal)
-                                        )
-                                        
-                                        let maxFreezes = viewModel.freezeLimit(
-                                            for: goal.duration
-                                        )
-                                        Text(goal.title)
-                                            .font(.title2)
-                                        HStack(spacing: 12) {
-                                            VStack(spacing: 8) {
-                                                Image(systemName: "flame.fill")
-                                                    .font(.system(size: 30))
-                                                    .foregroundStyle(.orange)
-                                                
-                                                Text("\(learnedCount)")                                                    .font(.title)
-                                                    .bold()
-                                                
-                                                Text("Learned")
-                                                    .font(.caption)
-                                            }
-                                            .padding(20)
-                                            .frame(width: 140)
-                                            .background(Color(white: 0.11))
-                                            .clipShape(RoundedRectangle(cornerRadius: 26))
-                                            .overlay {
-                                                RoundedRectangle(cornerRadius: 26)
-                                                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
-                                            }
-                                            
-                                            VStack(spacing: 8) {
-                                                Image(systemName: "snowflake")
-                                                    .font(.system(size: 30))
-                                                    .foregroundStyle(.cyan)
-                                                
-                                                Text("\(freezesUsed)")
-                                                    .font(.title)
-                                                    .bold()
-                                                
-                                                Text("Frozen")
-                                                    .font(.caption)
-                                            }
-                                            .padding(20)
-                                            .frame(width: 140)
-                                            .background(Color(white: 0.11))
-                                            .clipShape(RoundedRectangle(cornerRadius: 26))
-                                            .overlay {
-                                                RoundedRectangle(cornerRadius: 26)
-                                                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
-                                            }
-                                        }
-                                        Button {
-                                            viewModel.logDay(
-                                                type: .learned,
-                                                goal: goal,
-                                                context: modelContext
-                                            )
-                                        } label: {
-                                            Text(isTodayLogged(for: goal) ? "Logged as Learned" : "Log as Learned")
-                                                .font(.headline)
-                                                .foregroundStyle(
-                                                    isTodayLogged(for: goal)
-                                                    ? Color.gray
-                                                    : Color.white
-                                                )
-                                                .frame(width: 240, height: 240)
-                                                .background(
-                                                    Circle()
-                                                        .fill(
-                                                            isTodayLogged(for: goal)
-                                                            ? Color(white: 0.11)
-                                                            : Color(red: 1.0, green: 0.55, blue: 0.15)
-                                                        )
-                                                )
-                                        }
-                                        .disabled(isTodayLogged(for: goal))
-                                        Button {
-                                            viewModel.logDay(
-                                                type: .frozen,
-                                                goal: goal,
-                                                context: modelContext
-                                            )
-                                        } label: {
-                                            Text(
-                                                isFrozenDay(Date.now, goal: goal)
-                                                ? "Freezed for a day"
-                                                : "Freeze for a day"
-                                            )
-                                            .font(.subheadline)
-                                            .foregroundStyle(
-                                                isTodayLogged(for: goal) || freezesUsed >= maxFreezes
-                                                ? Color.gray
-                                                : Color.white
-                                            )
-                                            .frame(width: 240, height: 44)
-                                            .background(
-                                                isTodayLogged(for: goal) || freezesUsed >= maxFreezes
-                                                ? Color(white: 0.11)
-                                                : Color.cyan
-                                            )
-                                            .clipShape(Capsule())
-                                            .overlay {
-                                                Capsule()
-                                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                                            }
-                                        }
-                                        .disabled(
-                                            isTodayLogged(for: goal) ||
-                                            freezesUsed >= maxFreezes
-                                        )
-                                        Text("\(freezesUsed) out of \(maxFreezes) Freezes used")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                        if isTodayLogged(for: goal) {
-                                            Text("You've already logged today! ✓")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }}
-                                        
-                } else {
-                    Text("No learning goal yet")
-                }
-            } // نهاية VStack
-            .frame(maxWidth: .infinity, maxHeight: .infinity,
-                   alignment: .topLeading)
-            .padding()
-            .foregroundStyle(.white)
-
-        } // نهاية ZStack
-        .sheet(isPresented: $showCalendar) {
-            CalendarView()
-        }
-        .sheet(isPresented: $showEditGoal) {
-            if let goal = savedGoals.first(where: { !$0.isCompleted }) {
-                EditGoalView(goal: goal)
             }
         }
-    } // نهاية body
-    } // نهاية ActivityView
+        .background(Color.black.ignoresSafeArea())
+        .foregroundStyle(.white)
+        .preferredColorScheme(.dark)
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showCalendar) { CalendarView() }
+        .sheet(isPresented: $showEditGoal) {
+            if let goal { EditGoalView(goal: goal) }
+        }
+    }
+
+    private func dateHeader(_ date: Date, showsNavigation: Bool) -> some View {
+        HStack {
+            Text(date, format: .dateTime.weekday(.wide).day().month(.wide))
+                .font(.system(size: 17))
+                .foregroundStyle(.gray)
+            Spacer()
+            if showsNavigation {
+                Button { weekOffset -= 1 } label: {
+                    Image(systemName: "chevron.left").frame(width: 24, height: 24)
+                }
+                .accessibilityLabel("Previous week")
+                Button { weekOffset += 1 } label: {
+                    Image(systemName: "chevron.right").frame(width: 24, height: 24)
+                }
+                .accessibilityLabel("Next week")
+            }
+        }
+        .foregroundStyle(.blue)
+        .frame(height: 24)
+    }
+
+    private func headerButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 20))
+                .frame(width: 44, height: 44)
+                .glassEffect(.regular, in: Circle())
+        }
+        .accessibilityLabel(label)
+    }
+
+    private func weekStrip(days: [LearningDay], today: Date) -> some View {
+        let calendar = Calendar.current
+        let currentStart = calendar.dateInterval(of: .weekOfYear, for: today)?.start ?? today
+        let start = calendar.date(byAdding: .day, value: 7 * weekOffset, to: currentStart) ?? currentStart
+        let dates = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: start) }
+
+        return HStack(spacing: 0) {
+            ForEach(dates, id: \.self) { date in
+                let activity = viewModel.activityType(on: date, days: days)
+                let isUnloggedToday = activity == nil && calendar.isDate(date, inSameDayAs: today)
+                let tint = activity == .learned ? orange : cyan
+
+                VStack(spacing: 4) {
+                    Text(date, format: .dateTime.weekday(.narrow))
+                        .font(.system(size: 13, weight: .semibold))
+                    Text(date, format: .dateTime.day())
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(activity == nil ? Color.white : tint)
+                        .frame(width: 44, height: 44)
+                        .background(
+                            activity != nil ? tint.opacity(0.13) : isUnloggedToday ? orange : Color.clear,
+                            in: Circle()
+                        )
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private func card(_ symbol: String, count: Int, title: String, color: Color) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 30)
+        return VStack(spacing: 4) {
+            Image(systemName: symbol).font(.system(size: 22)).foregroundStyle(color)
+            Text("\(count) \(count == 1 ? "day" : "days")").font(.system(size: 16, weight: .semibold))
+            Text(title).font(.system(size: 12))
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 102)
+        .background(Color(white: 0.10), in: shape)
+        .overlay(shape.strokeBorder(.white.opacity(0.20)))
+    }
+
+    private func activityButtons(goal: LearningGoal, today: LearningDayType?, freezes: Int, width: CGFloat) -> some View {
+        let limit = viewModel.freezeLimit(for: goal.duration)
+        let learned = today == .learned
+        let frozenOrExhausted = today == .frozen || freezes >= limit
+
+        return VStack(spacing: 0) {
+            Button {
+                viewModel.logDay(type: .learned, goal: goal, context: modelContext)
+            } label: {
+                Text(learned ? "Logged as Learned" : "Log as Learned")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(learned ? dimmed : .white)
+                    .frame(width: width, height: width)
+                    .background((learned ? Color(white: 0.10) : orange).gradient, in: Circle())
+                    .overlay(Circle().strokeBorder(.white.opacity(learned ? 0.12 : 0.24)))
+            }
+            .disabled(!viewModel.canLogDay(type: .learned, today: today, freezesUsed: freezes, duration: goal.duration))
+
+            Button {
+                viewModel.logDay(type: .frozen, goal: goal, context: modelContext)
+            } label: {
+                Text(frozenOrExhausted ? "Freezed for a day" : "Freeze for a day")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(frozenOrExhausted ? dimmed : .white)
+                    .frame(width: width, height: 46)
+                    .background((frozenOrExhausted ? Color(white: 0.10) : cyan).gradient, in: Capsule())
+                    .overlay(Capsule().strokeBorder(.white.opacity(0.20)))
+            }
+            .disabled(!viewModel.canLogDay(type: .frozen, today: today, freezesUsed: freezes, duration: goal.duration))
+            .padding(.top, 46)
+
+            Text("\(freezes) out of \(limit) Freezes used")
+                .font(.system(size: 14))
+                .foregroundStyle(.secondary)
+                .padding(.top, 16)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func goalResult(_ goal: LearningGoal) -> some View {
+        let succeeded = viewModel.isGoalSuccessful(goal, days: savedDays)
+        return VStack(spacing: 20) {
+            Image(systemName: succeeded ? "hands.clap.fill" : "xmark.seal.fill")
+                .font(.system(size: 56))
+                .foregroundStyle(succeeded ? Color.yellow : Color.orange)
+            Text(succeeded ? "Well done!" : "You didn't reach your goal this time.").font(.headline)
+            Text(succeeded ? "Ready for your next goal?" : "Want to set another goal?")
+                .foregroundStyle(.gray)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 80)
+    }
+}
 
 #Preview("Activity - Learned Days") {
     let container = try! ModelContainer(

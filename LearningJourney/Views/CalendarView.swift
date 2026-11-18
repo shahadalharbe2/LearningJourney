@@ -9,6 +9,23 @@ struct CalendarView: View {
 
     @Query private var savedDays: [LearningDay]
 
+    private let months: [Date]
+    @State private var visibleMonth: Date?
+
+    init() {
+        let now = Date()
+        let calendar = Calendar.current
+        let yearStart = calendar.dateInterval(of: .year, for: now)?.start ?? now
+        let monthCount = calendar.range(of: .month, in: .year, for: now)?.count ?? 12
+        let months = (0..<monthCount).compactMap {
+            calendar.date(byAdding: .month, value: $0, to: yearStart)
+        }
+        self.months = months
+        _visibleMonth = State(initialValue: months.first {
+            calendar.isDate($0, equalTo: now, toGranularity: .month)
+        })
+    }
+
     private var calendar: Calendar {
         var calendar = Calendar.current
         calendar.firstWeekday = 1
@@ -34,19 +51,6 @@ struct CalendarView: View {
         }
     }
 
-    private var months: [Date] {
-        let year = calendar.component(.year, from: Date.now)
-
-        return (1...12).compactMap { month in
-            calendar.date(
-                from: DateComponents(
-                    year: year,
-                    month: month,
-                    day: 1
-                )
-            )
-        }
-    }
     private func daysInMonth(_ month: Date) -> [Date?] {
         guard let interval = calendar.dateInterval(
             of: .month,
@@ -167,14 +171,19 @@ struct CalendarView: View {
                 ScrollView {
                     LazyVStack(spacing: 24) {
                         ForEach(months, id: \.self) { month in
-                            monthView(month)
+                            VStack(alignment: .leading, spacing: 24) {
+                                monthView(month)
 
-                            Divider()
-                                .background(Color.gray.opacity(0.3))
+                                Divider()
+                                    .background(Color.gray.opacity(0.3))
+                            }
+                            .id(month)
                         }
                     }
+                    .scrollTargetLayout()
                     .padding(.top, 16)
                 }
+                .scrollPosition(id: $visibleMonth, anchor: .top)
             }
             .padding()
             .foregroundStyle(.white)

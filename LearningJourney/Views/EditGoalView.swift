@@ -1,8 +1,14 @@
 
+//
+//  EditGoalView.swift
+//  LearningJourney
+//
+
 import SwiftUI
 import SwiftData
 
 struct EditGoalView: View {
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
@@ -17,8 +23,11 @@ struct EditGoalView: View {
         _goalTitle = State(initialValue: goal.title)
         _selectedDuration = State(initialValue: goal.duration)
     }
+
     private func saveChanges() {
-        let newTitle = goalTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newTitle = goalTitle.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
 
         guard !newTitle.isEmpty else { return }
 
@@ -30,11 +39,11 @@ struct EditGoalView: View {
 
             try modelContext.save()
             dismiss()
-
         } catch {
             print("Failed to save goal changes: \(error)")
         }
     }
+
     var body: some View {
         ZStack {
             Color.black
@@ -42,7 +51,10 @@ struct EditGoalView: View {
 
             VStack(alignment: .leading, spacing: 24) {
 
+                // MARK: - Header
+
                 HStack {
+
                     Button {
                         dismiss()
                     } label: {
@@ -50,9 +62,9 @@ struct EditGoalView: View {
                             .font(.system(size: 20))
                             .foregroundStyle(.white)
                             .frame(width: 44, height: 44)
-                            .background(Color.white.opacity(0.10))
-                            .clipShape(Circle())
+                            .glassEffect(.regular, in: Circle())
                     }
+                    .accessibilityLabel("Back")
 
                     Spacer()
 
@@ -65,7 +77,12 @@ struct EditGoalView: View {
                         showResetConfirmation = true
                     } label: {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 20, weight: .semibold))
+                            .font(
+                                .system(
+                                    size: 20,
+                                    weight: .semibold
+                                )
+                            )
                             .foregroundStyle(.white)
                             .frame(width: 44, height: 44)
                             .background(Color.orange)
@@ -76,9 +93,13 @@ struct EditGoalView: View {
                             in: .whitespacesAndNewlines
                         ).isEmpty
                     )
+                    .accessibilityLabel("Update learning goal")
                 }
 
+                // MARK: - Learning Goal
+
                 VStack(alignment: .leading, spacing: 12) {
+
                     Text("I want to learn")
                         .font(.system(size: 16))
 
@@ -91,28 +112,40 @@ struct EditGoalView: View {
                 }
                 .padding(.top, 24)
 
+                // MARK: - Duration Selection
+
                 VStack(alignment: .leading, spacing: 16) {
+
                     Text("I want to learn it in a")
                         .font(.system(size: 16))
 
                     HStack(spacing: 12) {
+
                         ForEach(
-                            [LearningDuration.week, .month, .year],
+                            [
+                                LearningDuration.week,
+                                .month,
+                                .year
+                            ],
                             id: \.self
                         ) { duration in
+
                             Button {
                                 selectedDuration = duration
                             } label: {
                                 Text(duration.rawValue.capitalized)
                                     .font(.system(size: 16))
+                                    .foregroundStyle(.white)
                                     .padding(.horizontal, 22)
                                     .padding(.vertical, 12)
-                                    .background(
-                                        selectedDuration == duration
-                                        ? Color.orange
-                                        : Color.white.opacity(0.10)
+                                    .glassEffect(
+                                        .regular.tint(
+                                            selectedDuration == duration
+                                                ? .orange
+                                                : .clear
+                                        ),
+                                        in: Capsule()
                                     )
-                                    .clipShape(Capsule())
                             }
                             .buttonStyle(.plain)
                         }
@@ -123,7 +156,11 @@ struct EditGoalView: View {
             }
             .padding(16)
             .foregroundStyle(.white)
+
+            // MARK: - Update Confirmation
+
             if showResetConfirmation {
+
                 Color.black.opacity(0.55)
                     .ignoresSafeArea()
                     .onTapGesture {
@@ -131,22 +168,40 @@ struct EditGoalView: View {
                     }
 
                 VStack(alignment: .leading, spacing: 20) {
+
                     Text("Update goal")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(
+                            .system(
+                                size: 16,
+                                weight: .semibold
+                            )
+                        )
                         .foregroundStyle(.white)
 
-                    Text("If you update now, your streak will start over.")
-                        .font(.system(size: 16))
-                        .foregroundStyle(.gray)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text(
+                        "If you update now, your streak will start over."
+                    )
+                    .font(.system(size: 16))
+                    .foregroundStyle(.gray)
+                    .fixedSize(
+                        horizontal: false,
+                        vertical: true
+                    )
 
                     HStack(spacing: 8) {
+
                         Button("Dismiss") {
                             showResetConfirmation = false
                         }
                         .frame(maxWidth: .infinity)
                         .frame(height: 48)
-                        .background(Color(red: 0.20, green: 0.20, blue: 0.22))
+                        .background(
+                            Color(
+                                red: 0.20,
+                                green: 0.20,
+                                blue: 0.22
+                            )
+                        )
                         .clipShape(Capsule())
 
                         Button("Update") {
@@ -158,25 +213,48 @@ struct EditGoalView: View {
                         .background(Color.orange)
                         .clipShape(Capsule())
                     }
-                    .font(.system(size: 16, weight: .medium))
+                    .font(
+                        .system(
+                            size: 16,
+                            weight: .medium
+                        )
+                    )
                     .foregroundStyle(.white)
                 }
                 .padding(14)
                 .frame(width: 300)
-                .background(Color(red: 0.10, green: 0.10, blue: 0.10))
-                .clipShape(RoundedRectangle(cornerRadius: 32))
+                .background(
+                    Color(
+                        red: 0.10,
+                        green: 0.10,
+                        blue: 0.10
+                    )
+                )
+                .clipShape(
+                    RoundedRectangle(cornerRadius: 32)
+                )
                 .overlay {
                     RoundedRectangle(cornerRadius: 32)
-                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                        .stroke(
+                            Color.white.opacity(0.18),
+                            lineWidth: 1
+                        )
                 }
             }
         }
     }
 }
+
+// MARK: - Preview
+
 #Preview("Edit Goal - Test") {
+
     let container = try! ModelContainer(
-        for: LearningGoal.self, LearningDay.self,
-        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        for: LearningGoal.self,
+        LearningDay.self,
+        configurations: ModelConfiguration(
+            isStoredInMemoryOnly: true
+        )
     )
 
     let goal = LearningGoal(

@@ -1,3 +1,4 @@
+
 //
 //  LearningGoalViewModel.swift
 //  LearningJourney
@@ -7,27 +8,40 @@
 
 import Foundation
 import SwiftData
+
 @MainActor
 final class LearningGoalViewModel {
+
     @discardableResult
     func saveGoal(
         title: String,
         duration: LearningDuration,
         context: ModelContext
     ) -> Bool {
+
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+
         guard !title.isEmpty else { return false }
 
         var activeGoals = FetchDescriptor<LearningGoal>(
             predicate: #Predicate { !$0.isCompleted }
         )
+
         activeGoals.fetchLimit = 1
 
         do {
-            guard try context.fetch(activeGoals).isEmpty else { return false }
+            guard try context.fetch(activeGoals).isEmpty else {
+                return false
+            }
 
-            let goal = LearningGoal(title: title, duration: duration, startDate: Date())
+            let goal = LearningGoal(
+                title: title,
+                duration: duration,
+                startDate: Date()
+            )
+
             context.insert(goal)
+
             do {
                 try context.save()
                 return true
@@ -35,21 +49,38 @@ final class LearningGoalViewModel {
                 context.delete(goal)
                 throw error
             }
+
         } catch {
             print("Couldn't save the learning goal: \(error)")
             return false
         }
     }
-    func activityDays(for goal: LearningGoal, days: [LearningDay]) -> [LearningDay] {
+
+    func activityDays(
+        for goal: LearningGoal,
+        days: [LearningDay]
+    ) -> [LearningDay] {
+
         let endDate = goalEndDate(for: goal) ?? .distantFuture
+
         return days.filter {
             $0.goal?.persistentModelID == goal.persistentModelID &&
-            $0.date >= goal.startDate && $0.date < endDate
+            $0.date >= goal.startDate &&
+            $0.date < endDate
         }
     }
 
-    func activityType(on date: Date, days: [LearningDay]) -> LearningDayType? {
-        days.first { Calendar.current.isDate($0.date, inSameDayAs: date) }?.type
+    func activityType(
+        on date: Date,
+        days: [LearningDay]
+    ) -> LearningDayType? {
+
+        days.first {
+            Calendar.current.isDate(
+                $0.date,
+                inSameDayAs: date
+            )
+        }?.type
     }
 
     func canLogDay(
@@ -58,8 +89,13 @@ final class LearningGoalViewModel {
         freezesUsed: Int,
         duration: LearningDuration
     ) -> Bool {
-        if let today { return today == type }
-        return type == .learned || freezesUsed < freezeLimit(for: duration)
+
+        if let today {
+            return today == type
+        }
+
+        return type == .learned ||
+            freezesUsed < freezeLimit(for: duration)
     }
 
     func logDay(
@@ -68,22 +104,54 @@ final class LearningGoalViewModel {
         context: ModelContext,
         currentDate: Date = .now
     ) {
+
         guard currentDate >= goal.startDate,
-              currentDate < (goalEndDate(for: goal) ?? .distantFuture) else { return }
+              currentDate < (
+                goalEndDate(for: goal) ?? .distantFuture
+              ) else {
+            return
+        }
 
         do {
-            let days = activityDays(for: goal, days: try context.fetch(FetchDescriptor<LearningDay>()))
-            let today = days.first { Calendar.current.isDate($0.date, inSameDayAs: currentDate) }
-            guard canLogDay(
-                type: type, today: today?.type, freezesUsed: usedFreezes(days: days), duration: goal.duration
-            ) else { return }
+            let days = activityDays(
+                for: goal,
+                days: try context.fetch(
+                    FetchDescriptor<LearningDay>()
+                )
+            )
 
-            // Save pending edits before starting the activity change so rollback only affects this tap.
-            if context.hasChanges { try context.save() }
+            let today = days.first {
+                Calendar.current.isDate(
+                    $0.date,
+                    inSameDayAs: currentDate
+                )
+            }
+
+            guard canLogDay(
+                type: type,
+                today: today?.type,
+                freezesUsed: usedFreezes(days: days),
+                duration: goal.duration
+            ) else {
+                return
+            }
+
+            // Save pending edits before starting the activity change
+            // so rollback only affects this tap.
+            if context.hasChanges {
+                try context.save()
+            }
+
             if let today {
                 context.delete(today)
             } else {
-                context.insert(LearningDay(date: currentDate, type: type, goal: goal))
+                context.insert(
+                    LearningDay(
+                        date: currentDate,
+                        type: type,
+                        goal: goal
+                    )
+                )
             }
 
             do {
@@ -92,6 +160,7 @@ final class LearningGoalViewModel {
                 context.rollback()
                 throw error
             }
+
         } catch {
             print("Couldn't save today's activity: \(error)")
         }
@@ -99,68 +168,95 @@ final class LearningGoalViewModel {
 
     func calculateStreak(
         days: [LearningDay],
-        currentDate: Date = Date()
+        currentDate: Date = .now
     ) -> Int {
-        let sortedDays = days.sorted { $0.date > $1.date }
+
+        let sortedDays = days
+            .filter { $0.date <= currentDate }
+            .sorted { $0.date > $1.date }
+
         guard let latestDay = sortedDays.first else {
             return 0
         }
-        let hoursSinceLastLog = currentDate.timeIntervalSince(latestDay.date) / 3600
-        if hoursSinceLastLog > 32 {
+
+        let hoursSinceLastLog =
+            currentDate.timeIntervalSince(latestDay.date) / 3600
+
+        guard hoursSinceLastLog <= 32 else {
             return 0
         }
+
         var streak = 0
         var previousDate: Date?
+
         for day in sortedDays {
-            if let previousDate = previousDate {
+
+            if let previousDate {
                 let hoursBetweenLogs =
-                previousDate.timeIntervalSince(day.date) / 3600
-                
+                    previousDate.timeIntervalSince(day.date) / 3600
+
                 if hoursBetweenLogs > 32 {
                     break
                 }
             }
+
             if day.type == .learned {
                 streak += 1
             }
+
             previousDate = day.date
         }
-        
-        return streak    }
-    func freezeLimit(for duration: LearningDuration) -> Int {
+
+        return streak
+    }
+
+    func freezeLimit(
+        for duration: LearningDuration
+    ) -> Int {
+
         switch duration {
         case .week:
             return 2
+
         case .month:
             return 8
+
         case .year:
             return 96
         }
     }
-    
-    func usedFreezes(days: [LearningDay]) -> Int {
+
+    func usedFreezes(
+        days: [LearningDay]
+    ) -> Int {
+
         days.filter { day in
             day.type == .frozen
         }.count
     }
-    func goalEndDate(for goal: LearningGoal) -> Date? {
+
+    func goalEndDate(
+        for goal: LearningGoal
+    ) -> Date? {
+
         let calendar = Calendar.current
-        
+
         switch goal.duration {
+
         case .week:
             return calendar.date(
                 byAdding: .day,
                 value: 7,
                 to: goal.startDate
             )
-            
+
         case .month:
             return calendar.date(
                 byAdding: .month,
                 value: 1,
                 to: goal.startDate
             )
-            
+
         case .year:
             return calendar.date(
                 byAdding: .year,
@@ -169,83 +265,106 @@ final class LearningGoalViewModel {
             )
         }
     }
-    func hasGoalEnded(_ goal: LearningGoal) -> Bool {
+
+    func hasGoalEnded(
+        _ goal: LearningGoal
+    ) -> Bool {
+
         guard let endDate = goalEndDate(for: goal) else {
             return false
         }
-        
+
         return Date.now >= endDate
     }
+
     func learnedDaysCount(
         for goal: LearningGoal,
         days: [LearningDay]
     ) -> Int {
+
         days.filter { day in
             day.goal?.persistentModelID == goal.persistentModelID &&
             day.type == .learned &&
             day.date >= goal.startDate &&
-            (goalEndDate(for: goal).map { day.date < $0 } ?? false)
+            (
+                goalEndDate(for: goal).map {
+                    day.date < $0
+                } ?? false
+            )
         }.count
     }
-    
+
     func isGoalSuccessful(
         _ goal: LearningGoal,
         days: [LearningDay],
         currentDate: Date = .now
     ) -> Bool {
+
         guard let endDate = goalEndDate(for: goal),
               currentDate >= endDate else {
             return false
         }
-        
+
         let calendar = Calendar.current
-        let start = calendar.startOfDay(for: goal.startDate)
-        
+
+        let start = calendar.startOfDay(
+            for: goal.startDate
+        )
+
         let totalDays = calendar.dateComponents(
             [.day],
             from: start,
             to: calendar.startOfDay(for: endDate)
         ).day ?? 0
-        
-        guard totalDays > 0 else { return false }
+
+        guard totalDays > 0 else {
+            return false
+        }
+
         let goalDays = days.filter { day in
             day.goal?.persistentModelID == goal.persistentModelID &&
             day.date >= goal.startDate &&
             day.date < endDate
         }
-        
+
         let freezeCount = goalDays.filter {
             $0.type == .frozen
         }.count
-        
+
         guard freezeCount <= freezeLimit(for: goal.duration) else {
             return false
         }
-        
-        
+
         let learnedDates = Set(
             goalDays
                 .filter { $0.type == .learned }
-                .map { calendar.startOfDay(for: $0.date) }
+                .map {
+                    calendar.startOfDay(for: $0.date)
+                }
         )
-        
-        let requiredLearnedDays = totalDays - freezeLimit(for: goal.duration)
-        
+
+        let requiredLearnedDays =
+            totalDays - freezeLimit(for: goal.duration)
+
         let frozenDates = Set(
             goalDays
                 .filter { $0.type == .frozen }
-                .map { calendar.startOfDay(for: $0.date) }
+                .map {
+                    calendar.startOfDay(for: $0.date)
+                }
         )
-        
+
         let completedDates = learnedDates.union(frozenDates)
-        
+
         return learnedDates.count >= requiredLearnedDays &&
-        completedDates.count == totalDays
-        
-        
-    }}
+            completedDates.count == totalDays
+    }
+}
+
 #if DEBUG
+
 func testStreak() {
+
     let viewModel = LearningGoalViewModel()
     let calendar = Calendar.current
     let now = Date.now
@@ -266,18 +385,22 @@ func testStreak() {
             type: .learned,
             goal: goal
         ),
+
         LearningDay(
             date: now.addingTimeInterval(-24 * 60 * 60),
             type: .frozen,
             goal: goal
         ),
+
         LearningDay(
             date: now,
             type: .learned,
             goal: goal
         )
     ]
+
     let testTime = now
+
     let streak = viewModel.calculateStreak(
         days: days,
         currentDate: testTime
@@ -285,6 +408,5 @@ func testStreak() {
 
     print("🔥 Streak Test Result: \(streak)")
 }
+
 #endif
-
-
